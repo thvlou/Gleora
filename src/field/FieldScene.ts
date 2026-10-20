@@ -9,17 +9,18 @@ import type { Feature } from '../features.ts'
 // 맞춘 큰 고리에 놓아 앞쪽 오브젝트가 화면 가장자리까지 닿게 한다. 방위각은 40° 간격, 높이는 9단계를
 // 4씩 건너뛰며 나눠 주어 앞뒤로 스쳐 가는 오브젝트끼리 같은 높이에 겹치지 않는다.
 // 오브젝트는 늘 카메라 쪽을 보게 해 잘 읽히고, 필드 전체가 천천히 돌며 화면을 가로지른다.
+// 회전은 트랙볼 방식 — 방향을 쿼터니언으로 들고, 드래그한 방향(화면 축) 그대로 상하좌우 제한 없이 돈다.
 
 const FOV = 30
 const DISTANCE = 10
 const MODEL_SIZE = 2.4 // GLB 정규화 크기 (최대 변)
 const OBJECT_SIZE = 0.18 // 깊이 0 에서 화면 짧은 변 대비 오브젝트 크기
-const SPREAD = { x: 0.8, y: 0.62, z: 2.6 } // 화면 반폭·반높이 대비 고리 반지름·높이, z 는 월드 단위
+const SPREAD = { x: 0.8, y: 0.7, z: 2.6 } // 화면 반폭·반높이 대비 필드 반지름, z 는 월드 단위
+const RING_HEIGHT = 0.85 // 자리 높이 범위 (단위 구 안) — 어느 방향으로 돌려도 필드 밖으로 나가지 않게
 
-const IDLE_YAW = 6 // °/s
+const IDLE_SPIN = 6 // °/s — 가만히 두면 화면 세로축으로 돈다
 const DRAG_GAIN = 0.18 // ° / px
 const INERTIA = 1.2
-const PITCH_LIMIT = 28
 
 const SPRING = { k: 150, c: 19 } // 감쇠비 ≈ 0.78 — 살짝 넘쳤다 자리 잡는다
 const CLOSE = { k: 240, c: 31 }
@@ -37,7 +38,7 @@ const step = (s: Spring, target: number, { k, c }: { k: number; c: number }, dt:
 
 type Item = {
   feature: Feature
-  base: THREE.Vector3 // 고리 위 자리 (xz 단위 원, y -1…1)
+  base: THREE.Vector3 // 단위 구 위 자리
   anchor: THREE.Group // 위치·크기 (카메라를 바라본다)
   sway: THREE.Group // 제자리 흔들림
   mixer: THREE.AnimationMixer | null
@@ -61,10 +62,11 @@ export class FieldScene {
   private openedAt = 0
   private raf = 0
   private last = 0
-  private yaw = 15
-  private pitch = 8
-  private vYaw = IDLE_YAW
-  private vPitch = 0
+  // 필드 방향과 각속도 (°/s, 화면 X·Y 축 기준). 시작 자세는 살짝 내려다보는 각도.
+  private orientation = new THREE.Quaternion()
+    .setFromAxisAngle(new THREE.Vector3(1, 0, 0), 8 * DEG)
+    .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), 15 * DEG))
+  private spin = { x: 0, y: IDLE_SPIN }
   private drag: { id: number; x: number; y: number; t: number; moved: number } | null = null
   private hovered = -1
   private ro: ResizeObserver
@@ -96,9 +98,10 @@ export class FieldScene {
     this.scene.fog = new THREE.Fog(0xf3f0e8, DISTANCE - 1, DISTANCE + 9)
 
     this.items = features.map((feature, i) => {
-      // 고리 위 자리 — 방위각 40° 간격, 높이는 -1…1 을 9단계로 나눠 4씩 건너뛰며
+      // 고리 위 자리 — 방위각 40° 간격, 높이는 9단계를 4씩 건너뛰며. 단위 구 위에 올려 둔다.
       const n = features.length
-      const y = (((i * 4) % n) / (n - 1)) * 2 - 1
+      const y = ((((i * 4) % n) / (n - 1)) * 2 - 1) * RING_HEIGHT
+      const r = Math.sqrt(1 - y * y)
       const t = (i / n) * Math.PI * 2
       const anchor = new THREE.Group()
       const sway = new THREE.Group()
@@ -108,7 +111,7 @@ export class FieldScene {
       this.scene.add(anchor)
       return {
         feature,
-        base: new THREE.Vector3(Math.sin(t), y, Math.cos(t)),
+        base: new THREE.Vector3(Math.sin(t) * r, y, Math.cos(t) * r),
         anchor,
         sway,
         mixer: null,
@@ -229,7 +232,7 @@ export class FieldScene {
     this.drag = { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now(), moved: 0 }
     this.canvas.setPointerCapture(e.pointerId)
     this.canvas.dataset.dragging = ''
-    this.vYaw = this.vPitch = 0
+    this.spin.x = this.spin.y = 0
   }
 
   private onMove = (e: PointerEvent) => {
@@ -238,25 +241,34 @@ export class FieldScene {
     if (!d || e.pointerId !== d.id) return
     const now = performance.now()
     const dt = Math.max((now - d.t) / 1000, 1 / 240)
-    const dYaw = (e.clientX - d.x) * DRAG_GAIN
-    const dPitch = (e.clientY - d.y) * DRAG_GAIN
-    this.yaw += dYaw
-    this.pitch = THREE.MathUtils.clamp(this.pitch + dPitch, -PITCH_LIMIT, PITCH_LIMIT)
-    this.vYaw = this.vYaw * 0.6 + (dYaw / dt) * 0.4
-    this.vPitch = this.vPitch * 0.6 + (dPitch / dt) * 0.4
+    // 가로 이동 → 화면 세로축(Y) 회전, 세로 이동 → 화면 가로축(X) 회전. 잡은 쪽이 손을 따라온다.
+    const dy = (e.clientX - d.x) * DRAG_GAIN
+    const dx = (e.clientY - d.y) * DRAG_GAIN
+    this.turn(dx, dy)
+    this.spin.x = this.spin.x * 0.6 + (dx / dt) * 0.4
+    this.spin.y = this.spin.y * 0.6 + (dy / dt) * 0.4
     this.drag = { ...d, x: e.clientX, y: e.clientY, t: now, moved: d.moved + Math.abs(e.clientX - d.x) + Math.abs(e.clientY - d.y) }
   }
 
   private onUp = (e: PointerEvent) => {
     const d = this.drag
     if (!d || e.pointerId !== d.id) return
-    if (performance.now() - d.t > 80) this.vYaw = this.vPitch = 0
+    if (performance.now() - d.t > 80) this.spin.x = this.spin.y = 0
     this.drag = null
     delete this.canvas.dataset.dragging
   }
 
   private onLeave = () => {
     if (!this.drag) this.pointer.set(9, 9)
+  }
+
+  // 화면 축 기준 회전을 현재 방향 앞에 덧붙인다 (카메라가 고정이라 월드 축 = 화면 축)
+  private turnQ = new THREE.Quaternion()
+  private turn(degX: number, degY: number) {
+    const angle = Math.hypot(degX, degY)
+    if (angle < 1e-6) return
+    this.turnQ.setFromAxisAngle(new THREE.Vector3(degX / angle, degY / angle, 0), angle * DEG)
+    this.orientation.premultiply(this.turnQ).normalize()
   }
 
   private setHovered(index: number) {
@@ -276,14 +288,12 @@ export class FieldScene {
     const time = now / 1000
     const { unit, rx, ry, w, h } = this.size
 
+    // 놓으면 관성으로 돌다가 기본 자전 속도로 돌아간다. 기울인 각도는 그대로 둔다.
     if (!this.drag) {
       const ease = 1 - Math.exp(-INERTIA * dt)
-      this.vYaw += ((this.reduced ? 0 : IDLE_YAW) - this.vYaw) * ease
-      this.vPitch += (0 - this.vPitch) * ease
-      this.yaw += this.vYaw * dt
-      this.pitch += this.vPitch * dt
-      this.pitch += (8 - this.pitch) * (1 - Math.exp(-0.5 * dt))
-      this.pitch = THREE.MathUtils.clamp(this.pitch, -PITCH_LIMIT, PITCH_LIMIT)
+      this.spin.x += (0 - this.spin.x) * ease
+      this.spin.y += ((this.reduced ? 0 : IDLE_SPIN) - this.spin.y) * ease
+      this.turn(this.spin.x * dt, this.spin.y * dt)
     }
 
     // 호버 — 드래그 중이 아니고 열려 있을 때만
@@ -300,10 +310,9 @@ export class FieldScene {
       this.setHovered(-1)
     }
 
-    const cy = Math.cos(this.yaw * DEG), sy = Math.sin(this.yaw * DEG)
-    const cp = Math.cos(this.pitch * DEG), sp = Math.sin(this.pitch * DEG)
     const since = (now - this.openedAt) / 1000
     const v = new THREE.Vector3()
+    const p = new THREE.Vector3()
     let visible = false
 
     this.items.forEach((item, i) => {
@@ -322,14 +331,10 @@ export class FieldScene {
       }
       visible = true
 
-      // 필드 회전: yaw(Y) → pitch(X), 그다음 화면 비율로 늘린다
-      const b = item.base
-      const x1 = b.x * cy + b.z * sy
-      const z1 = -b.x * sy + b.z * cy
-      const y2 = b.y * cp - z1 * sp
-      const z2 = b.y * sp + z1 * cp
+      // 필드 방향으로 돌리고, 화면 비율로 늘린다
+      p.copy(item.base).applyQuaternion(this.orientation)
       const bob = this.reduced ? 0 : Math.sin(time * 0.7 + i * 1.9) * 0.08
-      const tx = x1 * rx, ty = y2 * ry + bob, tz = z2 * SPREAD.z
+      const tx = p.x * rx, ty = p.y * ry + bob, tz = p.z * SPREAD.z
       // 로고 자리(화면 중심)에서 퍼져 나온다
       item.anchor.position.set(tx * t, ty * t, tz * t)
       const s = unit * (0.15 + 0.85 * t) * (1 + 0.14 * item.hover.x)
@@ -345,7 +350,7 @@ export class FieldScene {
       item.mixer?.update(dt)
 
       // 이름표 — 오브젝트 아래
-      const facing = (z2 + 1) / 2 // 0 = 맨 뒤, 1 = 맨 앞
+      const facing = (p.z + 1) / 2 // 0 = 맨 뒤, 1 = 맨 앞
       v.set(item.anchor.position.x, item.anchor.position.y - MODEL_SIZE * 0.55 * s, item.anchor.position.z).project(this.camera)
       item.label.style.transform = `translate(${((v.x + 1) / 2) * w}px, ${((1 - v.y) / 2) * h}px) translate(-50%, 0)`
       item.label.style.opacity = String(Math.max(0, Math.min(1, t * 1.5)) * (0.25 + 0.75 * facing) * (0.7 + 0.3 * item.hover.x))
