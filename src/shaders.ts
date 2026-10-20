@@ -6,34 +6,7 @@ import { FIGMA_MATTE } from './effects/matte.ts'
 // 파라미터는 Figma 에 저작된 값 그대로. 모듈 상수로 두어 객체 정체성이 바뀌지 않게 한다
 // (바뀌면 런타임이 setup 을 다시 돈다).
 
-// Frame 1 — 흰 실크 배경
-export const SILK_FILL: Shader = {
-  setup: movingGradient.setup,
-  render: movingGradient.render,
-  manifest: movingGradient.manifest,
-  params: {
-    intensity: 3.200000047683716,
-    gradient: {
-      stops: [
-        { position: 0, color: { r: 1, g: 1, b: 1, a: 1 } },
-        { position: 0.5, color: { r: 1, g: 1, b: 1, a: 1 } },
-        { position: 0.75, color: { r: 0.9471153616905212, g: 0.9471153616905212, b: 0.9471153616905212, a: 1 } },
-        { position: 1, color: { r: 0.9519230723381042, g: 0.9519230723381042, b: 0.9519230723381042, a: 1 } },
-      ],
-    },
-    gradientBalance: 0,
-    material: 1,
-    morphSpeed: 2,
-    detail: 1.7999999523162842,
-    twist: 1.600000023841858,
-    zoom: 40,
-    gradientMethod: 2,
-    warp: 1.2000000476837158,
-    rotationSpeed: 16,
-  },
-}
-
-// Frame 2 — 노란 기가 도는 흰 배경
+// 커버 배경 — 노란 기가 도는 흰 배경 (Figma Frame 2)
 export const STATIC_FILL: Shader = {
   setup: movingGradient.setup,
   render: movingGradient.render,
@@ -59,7 +32,7 @@ export const STATIC_FILL: Shader = {
   },
 }
 
-// Frame 2 배경 체인 — 연기의 낮은 알파를 Figma 와 같은 방식으로 합성한다 (effects/matte.ts)
+// 커버 배경 체인 — 연기의 낮은 알파를 Figma 와 같은 방식으로 합성한다 (effects/matte.ts)
 export const STATIC_FILL_CHAIN: Shader[] = [STATIC_FILL, FIGMA_MATTE]
 
 // 로고 글자 — Channel mixer (빨강 채널을 살짝 섞는다). Figma 저작 값.
@@ -85,7 +58,7 @@ export const LOGO_TINT_MATRIX = [
   '0 0 0 1 0',
 ].join('  ')
 
-// Frame 2 이미지 — Lens distortion (색수차)
+// 커버 이미지 — Lens distortion (색수차)
 function lens(chromaticMode: number, centre: { x: number; y: number }): Shader[] {
   return [
     {
