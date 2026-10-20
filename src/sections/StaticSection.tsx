@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react'
 
+import { FeatureSphere } from '../components/FeatureSphere.tsx'
 import { LogoLetter } from '../components/LogoLetter.tsx'
 import { ShaderCanvas } from '../components/ShaderCanvas.tsx'
 import { Stage } from '../components/Stage.tsx'
@@ -72,7 +73,7 @@ function sparkPath() {
 }
 
 function useStatic() {
-  const logo = useRef<HTMLDivElement>(null)
+  const logo = useRef<HTMLButtonElement>(null)
   const letters = useRef<(HTMLDivElement | null)[]>([])
   const yellows = useRef<(HTMLDivElement | null)[]>([])
   const reds = useRef<(HTMLDivElement | null)[]>([])
@@ -139,58 +140,104 @@ function useStatic() {
   return { logo, letters, yellows, reds, sparks, start, stop }
 }
 
+// 표지 ↔ 메인. 로고를 누르면 표지(로고·이미지)가 물러나고 같은 배경 위에 피쳐 구가 펼쳐진다.
+function useEntered(logo: RefObject<HTMLElement | null>, back: RefObject<HTMLButtonElement | null>) {
+  const [entered, setEntered] = useState(false)
+  const first = useRef(true)
+
+  useEffect(() => {
+    if (!entered) return
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setEntered(false)
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [entered])
+
+  // 전환하면 포커스를 다음 화면의 첫 조작으로 옮긴다 (첫 렌더는 건드리지 않음)
+  useEffect(() => {
+    if (first.current) {
+      first.current = false
+      return
+    }
+    ;(entered ? back.current : logo.current)?.focus({ preventScroll: true })
+  }, [entered, back, logo])
+
+  return [entered, setEntered] as const
+}
+
 export function StaticSection() {
   const { logo, letters, yellows, reds, sparks, start, stop } = useStatic()
+  const back = useRef<HTMLButtonElement>(null)
+  const [entered, setEntered] = useEntered(logo, back)
+
+  const enter = () => {
+    stop()
+    setEntered(true)
+  }
 
   return (
-    <section className={styles.section} aria-label="Gleora static">
+    <section className={styles.section} aria-label="Gleora">
       <ShaderCanvas className={styles.fill} shaders={STATIC_FILL_CHAIN} />
       <Stage>
-        <div
-          ref={logo}
-          className={styles.logo}
-          style={{ left: STATIC_LOGO_BOX.x, top: STATIC_LOGO_BOX.y, width: STATIC_LOGO_BOX.w, height: STATIC_LOGO_BOX.h }}
-          onPointerEnter={start}
-          onPointerLeave={stop}
-          role="img"
-          aria-label="Gleora"
-        >
-          {LOGO_LETTERS.map((l, i) => {
-            const mask = { maskImage: `url("${l.src}")` } as CSSProperties
-            return (
-              <LogoLetter
-                key={l.name}
-                letter={l}
-                origin={STATIC_LOGO_BOX}
-                innerRef={(el) => {
-                  letters.current[i] = el
-                }}
-              >
-                <div
-                  ref={(el) => {
-                    yellows.current[i] = el
+        <div className={styles.cover} data-away={entered ? '' : undefined} inert={entered}>
+          <button
+            ref={logo}
+            type="button"
+            className={styles.logo}
+            style={{ left: STATIC_LOGO_BOX.x, top: STATIC_LOGO_BOX.y, width: STATIC_LOGO_BOX.w, height: STATIC_LOGO_BOX.h }}
+            onPointerEnter={start}
+            onPointerLeave={stop}
+            onClick={enter}
+            aria-label="Gleora — 피쳐 보기"
+          >
+            {LOGO_LETTERS.map((l, i) => {
+              const mask = { maskImage: `url("${l.src}")` } as CSSProperties
+              return (
+                <LogoLetter
+                  key={l.name}
+                  letter={l}
+                  origin={STATIC_LOGO_BOX}
+                  innerRef={(el) => {
+                    letters.current[i] = el
                   }}
-                  className={`${styles.ghost} ${styles.ghostYellow}`}
-                  style={mask}
-                />
-                <div
-                  ref={(el) => {
-                    reds.current[i] = el
-                  }}
-                  className={`${styles.ghost} ${styles.ghostRed}`}
-                  style={mask}
-                />
-              </LogoLetter>
-            )
-          })}
-          <svg ref={sparks} className={styles.sparks} aria-hidden="true" />
+                >
+                  <div
+                    ref={(el) => {
+                      yellows.current[i] = el
+                    }}
+                    className={`${styles.ghost} ${styles.ghostYellow}`}
+                    style={mask}
+                  />
+                  <div
+                    ref={(el) => {
+                      reds.current[i] = el
+                    }}
+                    className={`${styles.ghost} ${styles.ghostRed}`}
+                    style={mask}
+                  />
+                </LogoLetter>
+              )
+            })}
+            <svg ref={sparks} className={styles.sparks} aria-hidden="true" />
+          </button>
+          {IMAGES.map(({ src, shaders, rect }) => (
+            <div key={src} className={styles.image} style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h }}>
+              <LensImage src={src} lens={shaders} />
+            </div>
+          ))}
         </div>
-        {IMAGES.map(({ src, shaders, rect }) => (
-          <div key={src} className={styles.image} style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h }}>
-            <LensImage src={src} lens={shaders} />
-          </div>
-        ))}
+        <FeatureSphere open={entered} />
       </Stage>
+      <button
+        ref={back}
+        type="button"
+        className={styles.back}
+        data-show={entered ? '' : undefined}
+        tabIndex={entered ? 0 : -1}
+        aria-hidden={!entered}
+        onClick={() => setEntered(false)}
+      >
+        ← Gleora
+      </button>
     </section>
   )
 }

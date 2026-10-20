@@ -13,7 +13,43 @@
 
 .logo {
   position: absolute;
-  cursor: default;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  transition: opacity 420ms ease, scale 520ms cubic-bezier(0.3, 0, 0.2, 1), filter 520ms ease;
+}
+
+.logo:focus-visible {
+  outline: 2px solid #1d1a14;
+  outline-offset: 10px;
+  border-radius: 4px;
+}
+
+/* 표지 요소들 — 메인으로 들어가면 물러난다 (배경은 그대로) */
+.cover {
+  position: absolute;
+  inset: 0;
+}
+
+.cover[data-away] .logo {
+  opacity: 0;
+  scale: 0.6;
+  filter: blur(6px);
+}
+
+.cover[data-away] .image {
+  opacity: 0;
+  scale: 0.9;
+  filter: blur(12px);
+}
+
+.cover[data-away] .image:nth-of-type(2) {
+  transition-delay: 60ms;
+}
+
+.cover[data-away] .image:nth-of-type(3) {
+  transition-delay: 120ms;
 }
 
 /* 정전기 중에는 로고 전체가 미세하게 떤다 */
@@ -51,6 +87,7 @@
 .image {
   position: absolute;
   pointer-events: none;
+  transition: opacity 640ms ease, scale 760ms cubic-bezier(0.3, 0, 0.2, 1), filter 640ms ease;
 }
 
 .imageFill {
@@ -67,4 +104,50 @@
   max-width: none;
   object-fit: cover;
   pointer-events: none;
+}
+
+/* 메인 → 표지 */
+.back {
+  position: absolute;
+  left: 32px;
+  top: 28px;
+  z-index: 2;
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.55);
+  backdrop-filter: blur(8px);
+  font: 500 14px/1 ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  letter-spacing: 0.12em;
+  color: #1d1a14;
+  cursor: pointer;
+  opacity: 0;
+  translate: 0 -8px;
+  pointer-events: none;
+  transition: opacity 300ms ease, translate 300ms ease;
+}
+
+.back[data-show] {
+  opacity: 1;
+  translate: 0 0;
+  pointer-events: auto;
+  transition-delay: 400ms;
+}
+
+.back:focus-visible {
+  outline: 2px solid #1d1a14;
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .logo,
+  .image,
+  .back {
+    transition-property: opacity;
+  }
+  .cover[data-away] .logo,
+  .cover[data-away] .image {
+    scale: 1;
+    filter: none;
+  }
 }
