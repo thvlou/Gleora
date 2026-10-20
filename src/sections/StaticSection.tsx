@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react'
 
-import { FeatureSphere } from '../components/FeatureSphere.tsx'
+import { FeatureField } from '../components/FeatureField.tsx'
 import { LogoLetter } from '../components/LogoLetter.tsx'
 import { ShaderCanvas } from '../components/ShaderCanvas.tsx'
 import { Stage } from '../components/Stage.tsx'
@@ -140,7 +140,7 @@ function useStatic() {
   return { logo, letters, yellows, reds, sparks, start, stop }
 }
 
-// 표지 ↔ 메인. 로고를 누르면 표지(로고·이미지)가 물러나고 같은 배경 위에 피쳐 구가 펼쳐진다.
+// 표지 ↔ 메인. 로고를 누르면 표지(로고·이미지)가 물러나고 같은 배경 위에 피쳐 9개가 화면 가득 펼쳐진다.
 function useEntered(logo: RefObject<HTMLElement | null>, back: RefObject<HTMLButtonElement | null>) {
   const [entered, setEntered] = useState(false)
   const first = useRef(true)
@@ -225,8 +225,8 @@ export function StaticSection() {
             </div>
           ))}
         </div>
-        <FeatureSphere open={entered} />
       </Stage>
+      <FeatureField open={entered} />
       <button
         ref={back}
         type="button"
