@@ -1,0 +1,9 @@
+html,
+body {
+  margin: 0;
+  background: #fff;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+}

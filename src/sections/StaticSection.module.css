@@ -1,0 +1,70 @@
+.section {
+  position: relative;
+  height: 100vh;
+  height: 100svh;
+  overflow: hidden;
+  background: #fff;
+}
+
+.fill {
+  position: absolute;
+  inset: 0;
+}
+
+.logo {
+  position: absolute;
+  cursor: default;
+}
+
+/* 정전기 중에는 로고 전체가 미세하게 떤다 */
+.logo[data-charged] {
+  transform: translate(var(--shake-x, 0px), var(--shake-y, 0px));
+}
+
+/* 글자 뒤 잔상 — 글자 모양으로 마스킹한 노랑·빨강 면 */
+.ghost {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  mask-size: 100% 100%;
+  mask-repeat: no-repeat;
+  pointer-events: none;
+}
+
+.ghostYellow {
+  background: #ffd044;
+}
+
+.ghostRed {
+  background: #b8436a;
+}
+
+.sparks {
+  position: absolute;
+  inset: -40px;
+  width: calc(100% + 80px);
+  height: calc(100% + 80px);
+  overflow: visible;
+  pointer-events: none;
+}
+
+.image {
+  position: absolute;
+  pointer-events: none;
+}
+
+.imageFill {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.imageImg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  object-fit: cover;
+  pointer-events: none;
+}
