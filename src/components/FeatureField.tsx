@@ -31,6 +31,7 @@ export function FeatureField({ open }: { open: boolean }) {
             el.style.visibility = visible ? 'visible' : 'hidden'
           }
           scene.current = field
+          if (import.meta.env.DEV) Object.assign(window, { __gleoraField: field }) // 개발 중 점검용
           field.load()
           field.setOpen(openRef.current)
         })
@@ -64,6 +65,7 @@ export function FeatureField({ open }: { open: boolean }) {
               }}
               className={styles.label}
             >
+              <span className={styles.index}>{String(i + 1).padStart(2, '0')}</span>
               {f.label}
             </span>
           </li>

@@ -47,3 +47,9 @@
 .label[data-hover] {
   font-weight: 700;
 }
+
+/* 에셋 인덱스 시트(01 WEB …)와 같은 번호 */
+.index {
+  margin-right: 0.9em;
+  opacity: 0.45;
+}
