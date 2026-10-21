@@ -65,7 +65,6 @@ export function FeatureField({ open }: { open: boolean }) {
               }}
               className={styles.label}
             >
-              <span className={styles.index}>{String(i + 1).padStart(2, '0')}</span>
               {f.label}
             </span>
           </li>

@@ -36,20 +36,11 @@
   left: 0;
   top: 0;
   opacity: 0;
-  font: 500 13px/1 ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: #1d1a14;
+  /* 로고와 같은 글꼴·색 — 대소문자도 로고처럼 그대로 */
+  font: 400 30px/1 var(--font-logo);
+  letter-spacing: 0.01em;
+  color: var(--logo-red);
   white-space: nowrap;
+  transform-origin: 50% 0;
   will-change: transform, opacity;
-}
-
-.label[data-hover] {
-  font-weight: 700;
-}
-
-/* 에셋 인덱스 시트(01 WEB …)와 같은 번호 */
-.index {
-  margin-right: 0.9em;
-  opacity: 0.45;
 }

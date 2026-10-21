@@ -11,6 +11,7 @@ import type { ClipPlan, Feature } from '../features.ts'
 // - 회전: 트랙볼 — 쿼터니언 방향 + 화면 축 기준, 상하좌우 제한 없음. 놓으면 관성 후 느린 자전.
 //   오브젝트에 올라가 있으면 자전을 멈춰 활성 오브젝트만 움직이게 한다.
 // - 클립: features.ts 의 ClipPlan 대로 (호버 반복·호버 1회·클릭 1회·토글).
+// - 확대: 휠(트랙패드 핀치 포함)·+/−/0 키로 카메라 거리를 바꾼다. 배치 크기는 기본 거리 기준 그대로.
 
 const FOV = 30
 const DISTANCE = 10
@@ -27,6 +28,7 @@ const IDLE_SPIN = 5 // °/s — 가만히 두면 화면 세로축으로 돈다
 const DRAG_GAIN = 0.18 // ° / px
 const INERTIA = 1.2
 const CLICK_SLOP = 6 // px — 이보다 적게 움직이고 놓으면 클릭
+const ZOOM = { min: 0.6, max: 1.6, wheel: 0.0008, pinch: 0.01, key: 1.15 } // 카메라 거리 배율
 
 // 스프링 (질량 1)
 const SPRING = { k: 150, c: 19 } // 등장 — 감쇠비 ≈ 0.78, 살짝 넘쳤다 자리 잡는다
@@ -159,6 +161,8 @@ export class FieldScene {
     .setFromAxisAngle(new THREE.Vector3(1, 0, 0), 10 * DEG)
     .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), 20 * DEG))
   private spin = { x: 0, y: IDLE_SPIN }
+  private zoom = 1
+  private zoomTarget = 1
   private drag: { id: number; x: number; y: number; t: number; moved: number } | null = null
   private hovered = -1
   private ro: ResizeObserver
@@ -230,6 +234,8 @@ export class FieldScene {
     canvas.addEventListener('pointerup', this.onUp)
     canvas.addEventListener('pointercancel', this.onCancel)
     canvas.addEventListener('pointerleave', this.onLeave)
+    canvas.addEventListener('wheel', this.onWheel, { passive: false })
+    window.addEventListener('keydown', this.onKey)
   }
 
   /** 모델을 내려받는다. 표지가 보일 때 미리 불러 두면 들어갈 때 바로 뜬다. */
@@ -249,7 +255,8 @@ export class FieldScene {
           const dim = box.getSize(new THREE.Vector3())
           const k = THREE.MathUtils.clamp(Math.sqrt(FRONT_AREA / Math.max(dim.x * dim.y, 0.1)), 0.85, 1.25)
           item.fit.scale.setScalar(k)
-          item.reach = (dim.y / 2 - box.getCenter(new THREE.Vector3()).y + 0.15) * k
+          // 3/4 자세로 기울면 앞 아래 모서리가 더 내려와 보여서 여유를 둔다
+          item.reach = (dim.y / 2 - box.getCenter(new THREE.Vector3()).y) * k * 1.12 + 0.3
           item.fit.add(model)
           // 작은 부품 대신 넓은 상자로 고른다 (레이캐스트도 이것만)
           const hit = new THREE.Mesh(
@@ -288,6 +295,8 @@ export class FieldScene {
     this.canvas.removeEventListener('pointerup', this.onUp)
     this.canvas.removeEventListener('pointercancel', this.onCancel)
     this.canvas.removeEventListener('pointerleave', this.onLeave)
+    this.canvas.removeEventListener('wheel', this.onWheel)
+    window.removeEventListener('keydown', this.onKey)
     this.scene.traverse((obj) => {
       const mesh = obj as THREE.Mesh
       mesh.geometry?.dispose()
@@ -383,6 +392,26 @@ export class FieldScene {
     if (!this.drag) this.pointer.set(9, 9)
   }
 
+  private zoomBy(factor: number) {
+    this.zoomTarget = THREE.MathUtils.clamp(this.zoomTarget * factor, ZOOM.min, ZOOM.max)
+    this.wake()
+  }
+
+  // 휠을 올리면 다가가고 내리면 물러난다. 트랙패드 핀치는 ctrl+휠로 들어와 더 민감하게.
+  private onWheel = (e: WheelEvent) => {
+    if (!this.open) return
+    e.preventDefault()
+    const delta = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY
+    this.zoomBy(Math.exp(delta * (e.ctrlKey ? ZOOM.pinch : ZOOM.wheel)))
+  }
+
+  private onKey = (e: KeyboardEvent) => {
+    if (!this.open || e.metaKey || e.ctrlKey || e.altKey) return
+    if (e.key === '+' || e.key === '=') this.zoomBy(1 / ZOOM.key)
+    else if (e.key === '-' || e.key === '_') this.zoomBy(ZOOM.key)
+    else if (e.key === '0') this.zoomBy(1 / this.zoomTarget)
+  }
+
   // 화면 축 기준 회전을 현재 방향 앞에 덧붙인다 (카메라가 고정이라 월드 축 = 화면 축)
   private turnQ = new THREE.Quaternion()
   private axis = new THREE.Vector3()
@@ -434,6 +463,14 @@ export class FieldScene {
       this.turn(this.spin.x * dt, this.spin.y * dt)
     }
 
+    // 확대 — 카메라 거리를 부드럽게 따라간다. 안개도 함께 옮겨 깊이감이 유지되게.
+    this.zoom += (this.zoomTarget - this.zoom) * (1 - Math.exp(-(this.reduced ? 30 : 9) * dt))
+    const distance = DISTANCE * this.zoom
+    this.camera.position.z = distance
+    const fog = this.scene.fog as THREE.Fog
+    fog.near = distance + 0.5
+    fog.far = distance + 16
+
     // 포인터 쪽으로 다 함께 기운다
     const inside = Math.abs(this.pointer.x) <= 1 && Math.abs(this.pointer.y) <= 1
     const follow = 1 - Math.exp(-3 * dt)
@@ -484,7 +521,10 @@ export class FieldScene {
       // 이름표 — 오브젝트 아래. 뒤쪽은 숨긴다.
       const facing = (p.z + 1) / 2 // 0 = 맨 뒤, 1 = 맨 앞
       v.set(item.anchor.position.x, item.anchor.position.y - item.reach * s, item.anchor.position.z).project(this.camera)
-      item.label.style.transform = `translate(${((v.x + 1) / 2) * w}px, ${((1 - v.y) / 2) * h}px) translate(-50%, 0)`
+      // 이름표도 오브젝트와 같은 원근·확대 비율로 — 크기가 따로 놀면 동떨어져 보인다
+      const persp = THREE.MathUtils.clamp(DISTANCE / Math.max(1, distance - item.anchor.position.z), 0.6, 1.8)
+      item.label.style.transform =
+        `translate(${((v.x + 1) / 2) * w}px, ${((1 - v.y) / 2) * h}px) translate(-50%, 0) scale(${(persp * (1 + 0.15 * hx)).toFixed(3)})`
       const show = THREE.MathUtils.smoothstep(facing, 0.3, 0.6)
       item.label.style.opacity = String(Math.min(1, t * 1.5) * Math.max(show * (0.55 + 0.45 * hx), hx))
       item.label.toggleAttribute('data-hover', i === this.hovered)

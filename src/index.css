@@ -1,4 +1,10 @@
 html,
+:root {
+  /* 로고(Gleora 워드마크)와 같은 계열의 아주 좁은 굵은 그로테스크 */
+  --font-logo: 'League Gothic', 'Arial Narrow', sans-serif;
+  --logo-red: #f8181c;
+}
+
 body {
   margin: 0;
   background: #fff;
